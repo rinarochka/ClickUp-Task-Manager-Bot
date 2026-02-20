@@ -7,7 +7,7 @@ import { parseTaskInput } from './taskParser.js';
 import { getHelpMessage } from './helpContent.js';
 
 // Load Telegram Token from environment or constants
-const TelegramToken = process.env.TELEGRAM_TOKEN || 'your-telegram-bot-token';
+const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
 const bot = new TelegramBot(TelegramToken, { polling: true });
 
 (async function initializeBot() {
@@ -15,6 +15,21 @@ const bot = new TelegramBot(TelegramToken, { polling: true });
 
     bot.onText(/\/menu/, handleMenu);
     bot.onText(/\/help/, handleHelp);
+    bot.onText(/\/start/, (msg) => {
+    const chatId = msg.chat.id;
+
+    bot.sendMessage(chatId,
+`👋 Welcome to ClickUp Task Manager Bot!
+
+This bot allows you to:
+• Connect your ClickUp account
+• Browse Teams / Spaces / Lists
+• Create tasks directly from Telegram
+
+Use /menu to begin.`);
+    
+    handleMenu(msg);
+});
     bot.on('callback_query', handleCallbackQuery);
     bot.on('message', handleUserMessage);
 
@@ -51,9 +66,18 @@ function handleHelp(msg) {
 }
 
 async function handleCallbackQuery(query) {
+    if (!query || !query.id || !query.message) return;
+
     const chatId = query.message.chat.id;
     const user = getUserData(chatId);
     const data = query.data;
+
+    // ⚡ ОТВЕЧАЕМ МГНОВЕННО (самое важное)
+    try {
+        await bot.answerCallbackQuery(query.id);
+    } catch (e) {
+        return; // игнорируем старые кнопки
+    }
 
     try {
         switch (data) {
@@ -92,13 +116,12 @@ async function handleCallbackQuery(query) {
                 break;
 
             default:
-                handleHierarchyNavigation(chatId, user, data);
+                await handleHierarchyNavigation(chatId, user, data);
         }
     } catch (error) {
         console.error(`Error handling callback: ${error.message}`);
         bot.sendMessage(chatId, `An error occurred: ${error.message}`);
     }
-    bot.answerCallbackQuery(query.id);
 }
 
 async function handleUserMessage(msg) {
@@ -190,13 +213,10 @@ async function createTask(chatId, apiToken, listId, taskDetails) {
         return;
     }
     try {
-        const response = await fetchClickUp(`list/${listId}/task`, apiToken, 'POST', {
-            name: taskDetails.title,
-            description: taskDetails.description,
-            tags: taskDetails.tags,
-            priority: taskDetails.priority,
-            sprintPoints: taskDetails.sprintPoints,
-            custom_fields: taskDetails.customFields,
+       const response = await fetchClickUp(`list/${listId}/task`, apiToken, 'POST', {
+       name: taskDetails.title,
+       description: taskDetails.description,
+       tags: taskDetails.tags
         });
 
         // Construct the task URL
@@ -273,4 +293,8 @@ async function handleHierarchyNavigation(chatId, user, data) {
             parse_mode: 'Markdown',
         });;
     }
+    process.on('unhandledRejection', (err) => {
+    if (err?.response?.body?.description?.includes('query is too old')) return;
+    console.log('Unhandled:', err.message);
+});
 }
