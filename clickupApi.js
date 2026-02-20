@@ -5,7 +5,9 @@ const agentOptions = {
     agentClass: undefined,
     agentOptions: { family: 4 }, // Force IPv4
 };
-
+export async function getListsInSpace(token, spaceId) {
+    return await fetchClickUp(`space/${spaceId}/list`, token);
+}
 export async function fetchClickUp(endpoint, apiToken, method = 'GET', body = null) {
     const url = `https://api.clickup.com/api/v2/${endpoint}`;
     const headers = {

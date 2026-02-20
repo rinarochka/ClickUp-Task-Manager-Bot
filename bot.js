@@ -317,6 +317,3 @@ async function handleHierarchyNavigation(chatId, user, data) {
         );
     }
 }
-export async function getListsInSpace(token, spaceId) {
-    return await fetchClickUp(`space/${spaceId}/list`, token);
-}
