@@ -176,8 +176,7 @@ async function fetchAndDisplayTeams(chatId, apiToken) {
     sendItemsInGrid(chatId, teams.teams, 'team');
 }
 
-bot.sendMessage(chatId, 'Enter task details:\n\nTitle\nDescription\ntags: tag1, tag2\npr: high\nsp: 2\ntc: front, back');
-function displayCurrentList(chatId, user) {
+bot.sendMessage(chatId, 'Enter task details:\n\nTitle\nDescription\ntags: tag1, tag2\npr: high\nsp: 2\ntc: front, back');function displayCurrentList(chatId, user) {
     if (user.lastListName && user.lastListId && user.lastTeamId) {
         const listUrl = `https://app.clickup.com/${user.lastTeamId}/v/li/${user.lastListId}`;
         bot.sendMessage(chatId, `Your current list is: [${user.lastListName}](${listUrl})`, { parse_mode: 'Markdown' });
