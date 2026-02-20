@@ -5,7 +5,7 @@ import { loadUserData, saveUserData, getUserData, updateUser, clearUserData } fr
 import { fetchClickUp, getTeams, getSpaces, getFolders, getLists } from './clickupApi.js';
 import { parseTaskInput } from './taskParser.js';
 import { getHelpMessage } from './helpContent.js';
-
+import { getListsInSpace } from './clickupApi.js';
 // Load Telegram Token from environment or constants
 const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
 const bot = new TelegramBot(TelegramToken, { polling: true });
@@ -255,25 +255,47 @@ function sendItemsInGrid(chatId, items, type) {
 }
 
 async function handleHierarchyNavigation(chatId, user, data) {
+
+    // TEAM → SPACES
     if (data.startsWith('team_')) {
         const teamId = data.split('_')[1];
         updateUser(chatId, { lastTeamId: teamId });
+
         const spaces = await getSpaces(user.apiToken, teamId);
         sendItemsInGrid(chatId, spaces.spaces, 'space');
-    } else if (data.startsWith('space_')) {
+    }
+
+    // SPACE → (FOLDERS or LISTS)
+    else if (data.startsWith('space_')) {
         const spaceId = data.split('_')[1];
         updateUser(chatId, { lastSpaceId: spaceId });
+
         const folders = await getFolders(user.apiToken, spaceId);
-        sendItemsInGrid(chatId, folders.folders, 'folder');
-    } else if (data.startsWith('folder_')) {
+
+        // если есть папки → показываем папки
+        if (folders?.folders?.length > 0) {
+            sendItemsInGrid(chatId, folders.folders, 'folder');
+        } 
+        // если папок нет → списки лежат прямо в Space
+        else {
+            const lists = await getListsInSpace(user.apiToken, spaceId);
+            sendItemsInGrid(chatId, lists.lists, 'list');
+        }
+    }
+
+    // FOLDER → LISTS
+    else if (data.startsWith('folder_')) {
         const folderId = data.split('_')[1];
         updateUser(chatId, { lastFolderId: folderId });
+
         const lists = await getLists(user.apiToken, folderId);
         sendItemsInGrid(chatId, lists.lists, 'list');
-    } else if (data.startsWith('list_')) {
+    }
+
+    // LIST → SELECT
+    else if (data.startsWith('list_')) {
         const listId = data.split('_')[1];
 
-        // Ensure user.lists is defined and look for the selected list
         if (!user.lists || user.lists.length === 0) {
             bot.sendMessage(chatId, 'Error: No lists available. Please fetch lists again using /menu.');
             return;
@@ -282,19 +304,19 @@ async function handleHierarchyNavigation(chatId, user, data) {
         const selectedList = user.lists.find(list => list.id === listId);
 
         if (!selectedList) {
-            bot.sendMessage(chatId, 'Error: Could not find the selected list. Please fetch lists again.');
+            bot.sendMessage(chatId, 'Error: Could not find the selected list.');
             return;
         }
 
-        // Save the selected list's ID and name
         updateUser(chatId, { lastListId: listId, lastListName: selectedList.name });
 
-        bot.sendMessage(chatId, `List selected: *${selectedList.name}*. You can now create tasks in this list.`, {
-            parse_mode: 'Markdown',
-        });;
+        bot.sendMessage(
+            chatId,
+            `List selected: *${selectedList.name}*. You can now create tasks in this list.`,
+            { parse_mode: 'Markdown' }
+        );
     }
-    process.on('unhandledRejection', (err) => {
-    if (err?.response?.body?.description?.includes('query is too old')) return;
-    console.log('Unhandled:', err.message);
-});
+}
+export async function getListsInSpace(token, spaceId) {
+    return await fetchClickUp(`space/${spaceId}/list`, token);
 }
