@@ -17,41 +17,40 @@ const techCategoryMap = {
     'wordpress': '24cf18c1-9984-4be3-b507-4d7eb0523cb5'
 };
 
-export function parseTaskInput(input) {
-    const lines = input.split('\n').map(line => line.trim());
-    const title = lines.shift(); // First line is the title
-    let description = '';
+export function parseTaskInput(text) {
+
+    const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+
+    // --- БАЗА ---
+    let title = lines[0] || null;
+    let description = lines[1] || lines[0] || '';
+
+    // --- ПАРАМЕТРЫ ---
     let tags = [];
-    let priority = null;
-    let sprintPoints = null;
-    let techCategories = [];
-    const customFields = [];
-    const invalidCategories = [];
+    let priority = 'normal';
+    let sp = null;
+    let tc = [];
 
-    lines.forEach(line => {
-        if (line.startsWith('tags:')) {
-            tags = line.slice(5).split(',').map(tag => tag.trim());
-        } else if (line.startsWith('pr:')) {
-            const prValue = line.slice(3).trim().toLowerCase();
-            priority = priorityMap[prValue] || parseInt(prValue, 10);
-        } else if (line.startsWith('sp:')) {
-            sprintPoints = parseInt(line.slice(3).trim(), 10);
-        } else if (line.startsWith('tc:')) {
-            const categories = line.slice(3).split(',').map(tc => tc.trim().toLowerCase());
-            techCategories = categories.map(category => {
-                if (techCategoryMap[category]) {
-                    return techCategoryMap[category];
-                } else {
-                    invalidCategories.push(category);
-                    return null;
-                }
-            }).filter(Boolean);
-        } else {
-            description += (description ? '\n' : '') + line;
-        }
-    });
+    for (const line of lines) {
+        if (line.startsWith('tags:'))
+            tags = line.replace('tags:', '').split(',').map(t => t.trim());
 
-    if (techCategories.length) customFields.push({ id: TechCategoryID, value: techCategories });
+        if (line.startsWith('pr:'))
+            priority = line.replace('pr:', '').trim();
 
-    return { title, description, tags, priority, sprintPoints, customFields, invalidCategories };
+        if (line.startsWith('sp:'))
+            sp = Number(line.replace('sp:', '').trim());
+
+        if (line.startsWith('tc:'))
+            tc = line.replace('tc:', '').split(',').map(t => t.trim());
+    }
+
+    return {
+        title,
+        description,
+        tags,
+        priority,
+        sp,
+        tc
+    };
 }

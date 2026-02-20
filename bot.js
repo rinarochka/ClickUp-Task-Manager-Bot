@@ -176,15 +176,7 @@ async function fetchAndDisplayTeams(chatId, apiToken) {
     sendItemsInGrid(chatId, teams.teams, 'team');
 }
 
-function handleTaskCreation(chatId, user) {
-    if (!user.lastListId) {
-        bot.sendMessage(chatId, 'Please select a list first using the menu.');
-        return;
-    }
-    updateUser(chatId, { state: 'awaiting_task_input' });
-    bot.sendMessage(chatId, 'Enter task details:\n\nTitle\nDescription\ntags: tag1, tag2\npr: high\nsp: 2\ntc: front, back');
-}
-
+bot.sendMessage(chatId, 'Enter task details:\n\nTitle\nDescription\ntags: tag1, tag2\npr: high\nsp: 2\ntc: front, back');
 function displayCurrentList(chatId, user) {
     if (user.lastListName && user.lastListId && user.lastTeamId) {
         const listUrl = `https://app.clickup.com/${user.lastTeamId}/v/li/${user.lastListId}`;
