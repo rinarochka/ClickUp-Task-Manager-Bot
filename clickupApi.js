@@ -13,9 +13,10 @@ export async function fetchClickUp(endpoint, apiToken, method = 'GET', body = nu
     const url = `https://api.clickup.com/api/v2/${endpoint}`;
 
     const headers = {
+        // pk_ токены работают БЕЗ Bearer
         'Authorization': apiToken.startsWith('pk_')
-            ? apiToken              // Personal token
-            : `Bearer ${apiToken}`, // OAuth token
+            ? apiToken
+            : `Bearer ${apiToken}`,
         'Content-Type': 'application/json',
     };
 
