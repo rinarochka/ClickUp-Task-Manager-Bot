@@ -11,7 +11,8 @@ import {
     getFolders, 
     getLists,
     getTasks,
-    getListStatuses
+    getListStatuses,
+    getListsInSpace
 } from './clickupApi.js';
 // Load Telegram Token from environment or constants
 const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
@@ -22,6 +23,21 @@ const bot = new TelegramBot(TelegramToken, { polling: true });
 
     bot.onText(/\/menu/, handleMenu);
     bot.onText(/\/help/, handleHelp);
+    bot.onText(/\/start/, (msg) => {
+    const chatId = msg.chat.id;
+
+    bot.sendMessage(chatId,
+`👋 Welcome to ClickUp Task Manager Bot!
+
+This bot allows you to:
+• Connect your ClickUp account
+• Browse Teams / Spaces / Lists
+• Create tasks directly from Telegram
+
+Use /menu to begin.`);
+    
+    handleMenu(msg);
+});
     bot.on('callback_query', handleCallbackQuery);
     bot.on('message', handleUserMessage);
 
@@ -61,9 +77,18 @@ function handleHelp(msg) {
 }
 
 async function handleCallbackQuery(query) {
+    if (!query || !query.id || !query.message) return;
+
     const chatId = query.message.chat.id;
     const user = getUserData(chatId);
     const data = query.data;
+
+    // ⚡ ОТВЕЧАЕМ МГНОВЕННО (самое важное)
+    try {
+        await bot.answerCallbackQuery(query.id);
+    } catch (e) {
+        return; // игнорируем старые кнопки
+    }
 
     try {
 
@@ -208,10 +233,8 @@ async function handleCallbackQuery(query) {
         console.error(`Error handling callback: ${error.message}`);
         await bot.sendMessage(chatId, `An error occurred: ${error.message}`);
     }
-
-    await bot.answerCallbackQuery(query.id);
 }
-
+   
 async function handleUserMessage(msg) {
     const chatId = msg.chat.id;
     const user = getUserData(chatId);
@@ -269,17 +292,31 @@ function handleTaskCreation(chatId, user) {
         bot.sendMessage(chatId, 'Please select a list first using the menu.');
         return;
     }
-    updateUser(chatId, { state: 'awaiting_task_input' });
-    bot.sendMessage(chatId, 'Enter task details:\n\nTitle\nDescription\ntags: tag1, tag2\npr: high\nsp: 2\ntc: front, back');
-}
 
-function displayCurrentList(chatId, user) {
-    if (user.lastListName && user.lastListId && user.lastTeamId) {
-        const listUrl = `https://app.clickup.com/${user.lastTeamId}/v/li/${user.lastListId}`;
-        bot.sendMessage(chatId, `Your current list is: [${user.lastListName}](${listUrl})`, { parse_mode: 'Markdown' });
-    } else {
-        bot.sendMessage(chatId, 'No list selected. Use /menu to select one.');
-    }
+    updateUser(chatId, { state: 'awaiting_task_input' });
+
+    bot.sendMessage(chatId,
+`📝 Напиши задачу обычным текстом.
+
+Минимум:
+Название
+
+Можно добавить:
+Описание (вторая строка)
+
+Дополнительно:
+tags: tag1, tag2
+pr: low | normal | high | urgent
+sp: число
+tc: front, back
+
+Пример:
+Сделать авторизацию
+через Google
+
+tags: auth
+pr: high`
+    );
 }
 
 function confirmClearData(chatId) {
@@ -301,13 +338,10 @@ async function createTask(chatId, apiToken, listId, taskDetails) {
         return;
     }
     try {
-        const response = await fetchClickUp(`list/${listId}/task`, apiToken, 'POST', {
-            name: taskDetails.title,
-            description: taskDetails.description,
-            tags: taskDetails.tags,
-            priority: taskDetails.priority,
-            sprintPoints: taskDetails.sprintPoints,
-            custom_fields: taskDetails.customFields,
+       const response = await fetchClickUp(`list/${listId}/task`, apiToken, 'POST', {
+       name: taskDetails.title,
+       description: taskDetails.description,
+       tags: taskDetails.tags
         });
 
         // Construct the task URL
@@ -346,25 +380,47 @@ function sendItemsInGrid(chatId, items, type) {
 }
 
 async function handleHierarchyNavigation(chatId, user, data) {
+
+    // TEAM → SPACES
     if (data.startsWith('team_')) {
         const teamId = data.split('_')[1];
         updateUser(chatId, { lastTeamId: teamId });
+
         const spaces = await getSpaces(user.apiToken, teamId);
         sendItemsInGrid(chatId, spaces.spaces, 'space');
-    } else if (data.startsWith('space_')) {
+    }
+
+    // SPACE → (FOLDERS or LISTS)
+    else if (data.startsWith('space_')) {
         const spaceId = data.split('_')[1];
         updateUser(chatId, { lastSpaceId: spaceId });
+
         const folders = await getFolders(user.apiToken, spaceId);
-        sendItemsInGrid(chatId, folders.folders, 'folder');
-    } else if (data.startsWith('folder_')) {
+
+        // если есть папки → показываем папки
+        if (folders?.folders?.length > 0) {
+            sendItemsInGrid(chatId, folders.folders, 'folder');
+        } 
+        // если папок нет → списки лежат прямо в Space
+        else {
+            const lists = await getListsInSpace(user.apiToken, spaceId);
+            sendItemsInGrid(chatId, lists.lists, 'list');
+        }
+    }
+
+    // FOLDER → LISTS
+    else if (data.startsWith('folder_')) {
         const folderId = data.split('_')[1];
         updateUser(chatId, { lastFolderId: folderId });
+
         const lists = await getLists(user.apiToken, folderId);
         sendItemsInGrid(chatId, lists.lists, 'list');
-    } else if (data.startsWith('list_')) {
+    }
+
+    // LIST → SELECT
+    else if (data.startsWith('list_')) {
         const listId = data.split('_')[1];
 
-        // Ensure user.lists is defined and look for the selected list
         if (!user.lists || user.lists.length === 0) {
             bot.sendMessage(chatId, 'Error: No lists available. Please fetch lists again using /menu.');
             return;
@@ -373,19 +429,18 @@ async function handleHierarchyNavigation(chatId, user, data) {
         const selectedList = user.lists.find(list => list.id === listId);
 
         if (!selectedList) {
-            bot.sendMessage(chatId, 'Error: Could not find the selected list. Please fetch lists again.');
+            bot.sendMessage(chatId, 'Error: Could not find the selected list.');
             return;
         }
 
-        // Save the selected list's ID and name
         updateUser(chatId, { lastListId: listId, lastListName: selectedList.name });
 
-        bot.sendMessage(chatId, `List selected: *${selectedList.name}*. You can now create tasks in this list.`, {
-            parse_mode: 'Markdown',
-        });;
+        bot.sendMessage(
+            chatId,
+            `List selected: *${selectedList.name}*. You can now create tasks in this list.`,
+            { parse_mode: 'Markdown' }
+        );
     }
 }
-async function getListStatuses(apiToken, listId) {
-    const response = await fetchClickUp(`list/${listId}`, apiToken);
-    return response.statuses;
-}
+
+
