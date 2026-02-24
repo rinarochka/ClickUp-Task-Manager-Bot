@@ -9,17 +9,11 @@ export async function getListsInSpace(token, spaceId) {
     return await fetchClickUp(`space/${spaceId}/list`, token);
 }
 export async function fetchClickUp(endpoint, apiToken, method = 'GET', body = null) {
-
     const url = `https://api.clickup.com/api/v2/${endpoint}`;
-
     const headers = {
-        // pk_ токены работают БЕЗ Bearer
-        'Authorization': apiToken.startsWith('pk_')
-            ? apiToken
-            : `Bearer ${apiToken}`,
+        'Authorization': apiToken,
         'Content-Type': 'application/json',
     };
-
     const options = { method, headers };
     if (body) options.body = JSON.stringify(body);
 
@@ -28,13 +22,13 @@ export async function fetchClickUp(endpoint, apiToken, method = 'GET', body = nu
         const data = await response.json();
 
         if (!response.ok) {
-            console.error("ClickUp error:", data);
-            throw new Error(data.err || `HTTP ${response.status}`);
+            console.error(`Error fetching from ClickUp: ${JSON.stringify(data)}`);
+            throw new Error(data.err || `HTTP ${response.status}: ${response.statusText}`);
         }
 
         return data;
     } catch (error) {
-        console.error("Fetch error:", error.message);
+        console.error(`Error fetching from ClickUp: ${error.message}`);
         throw error;
     }
 }
@@ -76,32 +70,4 @@ export async function getMyTasks(apiToken, listId, userId) {
         `list/${listId}/task?assignees[]=${userId}`,
         apiToken
     );
-}
-export async function getTasksWithStatuses(apiToken, listId, statuses = []) {
-
-    let endpoint = `list/${listId}/task`;
-
-    if (statuses.length) {
-        const query = statuses
-            .map(s => `statuses[]=${encodeURIComponent(s)}`)
-            .join('&');
-
-        endpoint += `?${query}`;
-    }
-
-    return fetchClickUp(endpoint, apiToken);
-}
-export async function getMyTasksWithStatuses(apiToken, listId, userId, statuses = []) {
-
-    let endpoint = `list/${listId}/task?assignees[]=${userId}`;
-
-    if (statuses.length) {
-        const query = statuses
-            .map(s => `statuses[]=${encodeURIComponent(s)}`)
-            .join('&');
-
-        endpoint += `&${query}`;
-    }
-
-    return fetchClickUp(endpoint, apiToken);
 }

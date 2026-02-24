@@ -14,8 +14,7 @@ import {
     getListStatuses,
     getListsInSpace,
     getAuthorizedUser,
-    getTasksWithStatuses,
-    getMyTasksWithStatuses
+    getMyTasks
 } from './clickupApi.js';
 // Load Telegram Token from environment or constants
 const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
@@ -50,38 +49,34 @@ Use /menu to begin.`);
 // Handlers
 function handleMenu(msg) {
     const chatId = msg.chat.id;
-    const user = getUserData(chatId);
-
-    const tokenRow = user.apiToken
-        ? [
-            { text: 'Update API Token 🔄', callback_data: 'update_api_token' },
-            { text: 'Reset API Token 🗑️', callback_data: 'reset_api_token' }
-          ]
-        : [
-            { text: 'Set ClickUp API Token 🛠️', callback_data: 'set_api_token' }
-          ];
-
-    const keyboard = [
-        tokenRow,
-        [
-            { text: 'Fetch Teams 📋', callback_data: 'fetch_teams' }
-        ],
-        [
-            { text: 'Create Task ✏️', callback_data: 'create_task' },
-            { text: 'Show Tasks 📋', callback_data: 'show_tasks' }
-        ],
-        [
-            { text: 'My Tasks 👤', callback_data: 'my_tasks' }
-        ],
-        [
-            { text: 'Clear Data 🗑️', callback_data: 'clear_data' },
-            { text: 'Help ❓', callback_data: 'help' }
-        ]
-    ];
-
-    bot.sendMessage(chatId, 'What do you want to do?', {
-        reply_markup: { inline_keyboard: keyboard }
-    });
+    const menu = {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Set ClickUp API Token 🛠️', callback_data: 'set_api_token' },
+                    { text: 'Fetch Teams 📋', callback_data: 'fetch_teams' },
+                ],
+                [
+                    { text: 'Create Task ✏️', callback_data: 'create_task' },
+                    { text: 'Current List 📄', callback_data: 'current_list' },
+                ],
+                [
+                    { text: 'Show Tasks 📋', callback_data: 'show_tasks' }
+                ],
+                [
+                    { text: 'Sync My ClickUp ID 👤', callback_data: 'get_me' }
+                ],
+                [
+                    { text: 'My Tasks 👤', callback_data: 'my_tasks' }
+                ],
+                [
+                    { text: 'Clear Data 🗑️', callback_data: 'clear_data' },
+                    { text: 'Help ❓', callback_data: 'help' },
+                ],
+            ],
+        },
+    };
+    bot.sendMessage(chatId, 'What do you want to do?', menu);
 }
 
 function handleHelp(msg) {
@@ -90,192 +85,198 @@ function handleHelp(msg) {
 }
 
 async function handleCallbackQuery(query) {
-    if (!query?.id || !query?.message) return;
+    if (!query || !query.id || !query.message) return;
 
     const chatId = query.message.chat.id;
     const user = getUserData(chatId);
     const data = query.data;
 
+    // ⚡ ОТВЕЧАЕМ МГНОВЕННО (самое важное)
     try {
         await bot.answerCallbackQuery(query.id);
-    } catch {
-        return;
+    } catch (e) {
+        return; // игнорируем старые кнопки
     }
 
     try {
 
-        // ===============================
-        // TASK SELECT
-        // ===============================
+        // ===== SELECT TASK =====
         if (data.startsWith('task_')) {
-            const taskId = data.replace('task_', '');
 
+            const taskId = data.replace('task_', '');
             updateUser(chatId, { selectedTaskId: taskId });
 
             await bot.sendMessage(chatId, 'Task options:', {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '🔄 Change Status', callback_data: 'list_change_status' }
+                            { text: 'Change Status 🔄', callback_data: 'change_status' }
                         ]
                     ]
                 }
             });
 
+            await bot.answerCallbackQuery(query.id);
             return;
         }
 
-        // ===============================
-        // STATUS UPDATE
-        // ===============================
-        if (data.startsWith('toggle_status_')) {
 
-    const status = data.replace('toggle_status_', '');
-    const current = user.tempStatusSelection || [];
-
-    let updated;
-
-    if (current.includes(status)) {
-        updated = current.filter(s => s !== status);
-    } else {
-        updated = [...current, status];
-    }
-
-    updateUser(chatId, { tempStatusSelection: updated });
-
-    await showStatusFilter(chatId);
-    return;
-}
+        // ===== SET STATUS =====
         if (data.startsWith('set_status_')) {
 
             if (!user.selectedTaskId) {
-                await bot.sendMessage(chatId, 'Select a task first.');
+                await bot.sendMessage(chatId, 'Please select a task first.');
+                await bot.answerCallbackQuery(query.id);
                 return;
             }
 
             const newStatus = data.replace('set_status_', '');
 
-            await safeClickUpCall(chatId, () =>
-                fetchClickUp(
-                    `task/${user.selectedTaskId}`,
-                    user.apiToken,
-                    'PUT',
-                    { status: newStatus }
-                )
+            await fetchClickUp(
+                `task/${user.selectedTaskId}`,
+                user.apiToken,
+                'PUT',
+                { status: newStatus }
             );
 
             await bot.sendMessage(chatId, `✅ Status updated to: ${newStatus}`);
+
+            await bot.answerCallbackQuery(query.id);
             return;
         }
 
-        // ===============================
-        // SWITCH HANDLER
-        // ===============================
+
+        // ===== STATIC CALLBACKS =====
         switch (data) {
 
-            // TOKEN
             case 'set_api_token':
-            case 'update_api_token':
                 updateUser(chatId, { state: 'awaiting_api_token' });
-                await bot.sendMessage(chatId, 'Enter ClickUp API token:');
+                await bot.sendMessage(chatId, 'Please enter your ClickUp API token:');
                 break;
+            case 'my_tasks':
 
-            case 'reset_api_token':
-                updateUser(chatId, {
-                    apiToken: null,
-                    clickupUserId: null
-                });
-                await bot.sendMessage(chatId, '✅ API token reset.');
-                handleMenu(query.message);
-                break;
-                case 'apply_status_filter':
-
-    const selected = user.tempStatusSelection || [];
-
-    let finalStatuses = selected;
-
-    if (!selected.length) {
-
-        const statuses = user.availableStatuses || [];
-
-        const openStatus = statuses.find(s => s.type === 'open');
-
-        const inProgress = statuses.find(s =>
-            s.status.toLowerCase().includes('progress')
-        );
-
-        if (openStatus) {
-            finalStatuses = [openStatus.status];
-        } else if (inProgress) {
-            finalStatuses = [inProgress.status];
-        } else if (statuses.length) {
-            finalStatuses = [statuses[0].status];
-        }
+    if (!user.apiToken || !user.lastListId) {
+        await bot.sendMessage(chatId, 'Please select a list first.');
+        break;
     }
 
-    updateUser(chatId, {
-        selectedStatuses: finalStatuses,
-        tempStatusSelection: []
-    });
+    if (!user.clickupUserId) {
+        await bot.sendMessage(chatId, 'Please sync your ClickUp ID first.');
+        break;
+    }
 
-    await bot.sendMessage(
-        chatId,
-        `✅ Status filter saved:\n${finalStatuses.join(', ')}`
+    const myTasksResponse = await getMyTasks(
+        user.apiToken,
+        user.lastListId,
+        user.clickupUserId
     );
 
+    const myTasks = myTasksResponse.tasks;
+
+    if (!myTasks || !myTasks.length) {
+        await bot.sendMessage(chatId, 'You have no assigned tasks in this list.');
+        break;
+    }
+
+    const myTaskButtons = myTasks.map(t => [{
+        text: `${t.name} (${t.status.status})`,
+        callback_data: `task_${t.id}`
+    }]);
+
+    await bot.sendMessage(chatId, 'Your assigned tasks:', {
+        reply_markup: { inline_keyboard: myTaskButtons }
+    });
+
     break;
-            // NAVIGATION
             case 'fetch_teams':
-            case 'change_list':
                 await fetchAndDisplayTeams(chatId, user.apiToken);
                 break;
 
-            // LIST CONTEXT ACTIONS
-            case 'list_show_tasks':
-                await showTasks(chatId);
-                break;
-
-            case 'list_my_tasks':
-                await showMyTasks(chatId);
-                break;
-
-            case 'list_filter_status':
-                await showStatusFilter(chatId);
-                break;
-
-            case 'list_change_status':
-                await showStatusChanger(chatId);
-                break;
-
-            case 'list_assign_user':
-                await bot.sendMessage(chatId, 'Assign user feature coming next.');
-                break;
-
-            case 'list_add_comment':
-                await bot.sendMessage(chatId, 'Add comment feature coming next.');
-                break;
-
-            // CREATE TASK
             case 'create_task':
                 handleTaskCreation(chatId, user);
                 break;
 
-            // CLEAR DATA
+            case 'current_list':
+                displayCurrentList(chatId, user);
+                break;
+
             case 'clear_data':
                 confirmClearData(chatId);
                 break;
 
+            case 'help':
+                await bot.sendMessage(chatId, getHelpMessage(), { parse_mode: 'Markdown' });
+                break;
+
             case 'confirm_clear_data':
                 clearUserData(chatId);
-                await bot.sendMessage(chatId, 'All data cleared.');
+                await bot.sendMessage(chatId, 'All your data has been cleared. Use /menu to start fresh.');
                 break;
 
             case 'cancel_clear_data':
-                await bot.sendMessage(chatId, 'Cancelled.');
+                await bot.sendMessage(chatId, 'Your data was not cleared. Use /menu to continue.');
+                break;
+            case 'get_me':
+
+    if (!user.apiToken) {
+        await bot.sendMessage(chatId, 'Please set API token first.');
+        break;
+    }
+
+    const me = await getAuthorizedUser(user.apiToken);
+
+    updateUser(chatId, { clickupUserId: me.user.id });
+
+    await bot.sendMessage(chatId, `✅ Your ClickUp ID synced.`);
+    break;
+            case 'show_tasks':
+
+                if (!user.apiToken || !user.lastListId) {
+                    await bot.sendMessage(chatId, 'Please set API token and select a list first.');
+                    break;
+                }
+
+                const response = await getTasks(user.apiToken, user.lastListId);
+                const tasks = response.tasks;
+
+                if (!tasks || !tasks.length) {
+                    await bot.sendMessage(chatId, 'No tasks in this list.');
+                    break;
+                }
+
+                updateUser(chatId, { tasks });
+
+                const taskButtons = tasks.map(t => [{
+                    text: `${t.name} (${t.status.status})`,
+                    callback_data: `task_${t.id}`
+                }]);
+
+                await bot.sendMessage(chatId, 'Select a task:', {
+                    reply_markup: { inline_keyboard: taskButtons }
+                });
+
                 break;
 
-            case 'help':
-                await bot.sendMessage(chatId, getHelpMessage(), { parse_mode: 'Markdown' });
+            case 'change_status':
+
+                if (!user.selectedTaskId) {
+                    await bot.sendMessage(chatId, 'Please select a task first.');
+                    break;
+                }
+
+                const statuses = await getListStatuses(user.apiToken, user.lastListId);
+
+                statuses.sort((a, b) => a.orderindex - b.orderindex);
+
+                const statusButtons = statuses.map(s => [{
+                    text: s.status,
+                    callback_data: `set_status_${s.status}`
+                }]);
+
+                await bot.sendMessage(chatId, 'Select new status:', {
+                    reply_markup: { inline_keyboard: statusButtons }
+                });
+
                 break;
 
             default:
@@ -283,11 +284,8 @@ async function handleCallbackQuery(query) {
         }
 
     } catch (error) {
-
-        if (error.message !== 'TOKEN_INVALID') {
-            console.error(error);
-            await bot.sendMessage(chatId, `Error: ${error.message}`);
-        }
+        console.error(`Error handling callback: ${error.message}`);
+        await bot.sendMessage(chatId, `An error occurred: ${error.message}`);
     }
 }
    
@@ -295,201 +293,207 @@ async function handleUserMessage(msg) {
     const chatId = msg.chat.id;
     const user = getUserData(chatId);
 
-    if (!msg.text) return;
+    // Check if the message contains text
+    if (!msg.text) {
+        bot.sendMessage(chatId, 'I can only process text messages. Please use text commands or menu options.');
+        return;
+    }
 
     try {
-
-        // =========================
-        // API TOKEN INPUT
-        // =========================
-        if (user.state === 'awaiting_api_token') {
-
-            const newToken = msg.text.trim();
-
-            try {
-                const me = await safeClickUpCall(chatId, () =>
-                    getAuthorizedUser(newToken)
-                );
-
-                updateUser(chatId, {
-                    apiToken: newToken,
-                    clickupUserId: me.user.id,
-                    state: null
-                });
-
-                await bot.sendMessage(chatId, '✅ Token saved and synced.');
-                handleMenu(msg);
-
-            } catch (err) {
-                if (err.message !== 'TOKEN_INVALID') {
-                    await bot.sendMessage(chatId, '❌ Invalid API token. Try again.');
-                }
-            }
-
+        // If the message starts with "/", treat it as a command
+        if (msg.text.startsWith('/')) {
+            const query = {
+                message: { chat: { id: chatId } },
+                data: msg.text, // Remove the leading "/"
+            };
+            await handleCallbackQuery(query);
             return;
         }
 
-        // =========================
-        // TASK CREATION INPUT
-        // =========================
-        if (user.state === 'awaiting_task_input') {
-
+        if (user.state === 'awaiting_api_token') {
+            updateUser(chatId, { apiToken: msg.text, state: null });
+            bot.sendMessage(chatId, 'Your API token has been saved! Use /menu to continue.');
+        } else if (user.state === 'awaiting_task_input') {
             const taskDetails = parseTaskInput(msg.text);
-
             if (!taskDetails.title) {
-                await bot.sendMessage(chatId, 'Invalid task format.');
+                bot.sendMessage(chatId, 'Invalid task format. Please try again.');
                 return;
             }
-
-            await createTask(
-                chatId,
-                user.apiToken,
-                user.lastListId,
-                taskDetails
-            );
-
-            updateUser(chatId, { state: null });
-            return;
+            if (taskDetails.invalidCategories && taskDetails.invalidCategories.length) {
+                bot.sendMessage(chatId, `Invalid Tech Categories: ${taskDetails.invalidCategories.join(', ')}`);
+                return;
+            }
+            await createTask(chatId, user.apiToken, user.lastListId, taskDetails);
         }
-
     } catch (error) {
-        console.error(error);
-        await bot.sendMessage(chatId, `Error: ${error.message}`);
+        console.error(`Error handling user message: ${error.message}`);
+        bot.sendMessage(chatId, `An error occurred: ${error.message}`);
     }
 }
-function buildListActionsKeyboard() {
-    return {
+
+// Additional Helper Functions
+async function fetchAndDisplayTeams(chatId, apiToken) {
+    if (!apiToken) {
+        bot.sendMessage(chatId, 'Please set your API token first.');
+        return;
+    }
+    const teams = await getTeams(apiToken);
+    sendItemsInGrid(chatId, teams.teams, 'team');
+}
+
+function handleTaskCreation(chatId, user) {
+    if (!user.lastListId) {
+        bot.sendMessage(chatId, 'Please select a list first using the menu.');
+        return;
+    }
+
+    updateUser(chatId, { state: 'awaiting_task_input' });
+
+    bot.sendMessage(chatId,
+`📝 Напиши задачу обычным текстом.
+
+Минимум:
+Название
+
+Можно добавить:
+Описание (вторая строка)
+
+Дополнительно:
+tags: tag1, tag2
+pr: low | normal | high | urgent
+sp: число
+tc: front, back
+
+Пример:
+Сделать авторизацию
+через Google
+
+tags: auth
+pr: high`
+    );
+}
+
+function confirmClearData(chatId) {
+    bot.sendMessage(chatId, 'Are you sure you want to clear your data?', {
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: '📋 Show Tasks', callback_data: 'list_show_tasks' },
-                    { text: '👤 My Tasks', callback_data: 'list_my_tasks' }
+                    { text: 'Yes', callback_data: 'confirm_clear_data' },
+                    { text: 'No', callback_data: 'cancel_clear_data' },
                 ],
-                [
-                    { text: '🔎 Filter by Status', callback_data: 'list_filter_status' },
-                    { text: '🔄 Change Status', callback_data: 'list_change_status' }
-                ],
-                [
-                    { text: '👥 Assign User', callback_data: 'list_assign_user' },
-                    { text: '💬 Add Comment', callback_data: 'list_add_comment' }
-                ],
-                [
-                    { text: '🔙 Change List', callback_data: 'change_list' }
-                ]
-            ]
+            ],
+        },
+    });
+}
+
+async function createTask(chatId, apiToken, listId, taskDetails) {
+    if (!listId) {
+        bot.sendMessage(chatId, 'No list selected. Please select a list using /menu.');
+        return;
+    }
+    try {
+       const response = await fetchClickUp(`list/${listId}/task`, apiToken, 'POST', {
+       name: taskDetails.title,
+       description: taskDetails.description,
+       tags: taskDetails.tags
+        });
+
+        // Construct the task URL
+        const taskUrl = `https://app.clickup.com/t/${response.id}`;
+
+        // Send success message with the task URL
+        bot.sendMessage(chatId, `Task "${response.name}" created successfully!\n\n${taskUrl}`, {
+            parse_mode: 'Markdown',
+        });
+    } catch (error) {
+        bot.sendMessage(chatId, `Failed to create the task: ${error.message}`);
+    }
+}
+
+function sendItemsInGrid(chatId, items, type) {
+    const user = getUserData(chatId);
+
+    // Save lists for later lookup if the type is 'list'
+    if (type === 'list') {
+        updateUser(chatId, { lists: items });
+    }
+
+    const buttons = [];
+    for (let i = 0; i < items.length; i += 2) {
+        buttons.push(
+            items.slice(i, i + 2).map(item => ({
+                text: item.name,
+                callback_data: `${type}_${item.id}`,
+            }))
+        );
+    }
+
+    bot.sendMessage(chatId, `Select a ${type}:`, {
+        reply_markup: { inline_keyboard: buttons },
+    });
+}
+
+async function handleHierarchyNavigation(chatId, user, data) {
+
+    // TEAM → SPACES
+    if (data.startsWith('team_')) {
+        const teamId = data.split('_')[1];
+        updateUser(chatId, { lastTeamId: teamId });
+
+        const spaces = await getSpaces(user.apiToken, teamId);
+        sendItemsInGrid(chatId, spaces.spaces, 'space');
+    }
+
+    // SPACE → (FOLDERS or LISTS)
+    else if (data.startsWith('space_')) {
+        const spaceId = data.split('_')[1];
+        updateUser(chatId, { lastSpaceId: spaceId });
+
+        const folders = await getFolders(user.apiToken, spaceId);
+
+        // если есть папки → показываем папки
+        if (folders?.folders?.length > 0) {
+            sendItemsInGrid(chatId, folders.folders, 'folder');
+        } 
+        // если папок нет → списки лежат прямо в Space
+        else {
+            const lists = await getListsInSpace(user.apiToken, spaceId);
+            sendItemsInGrid(chatId, lists.lists, 'list');
         }
-    };
-}
-async function showTasks(chatId) {
-    const user = getUserData(chatId);
-
-    const response = await safeClickUpCall(chatId, () =>
-        getTasksWithStatuses(
-            user.apiToken,
-            user.lastListId,
-            user.selectedStatuses || []
-        )
-    );
-
-    const tasks = response.tasks || [];
-
-    if (!tasks.length) {
-        await bot.sendMessage(chatId, 'No tasks for selected statuses.');
-        return;
     }
 
-    const buttons = tasks.map(t => [{
-        text: `${t.name} (${t.status.status})`,
-        callback_data: `task_${t.id}`
-    }]);
+    // FOLDER → LISTS
+    else if (data.startsWith('folder_')) {
+        const folderId = data.split('_')[1];
+        updateUser(chatId, { lastFolderId: folderId });
 
-    await bot.sendMessage(chatId, 'Tasks:', {
-        reply_markup: { inline_keyboard: buttons }
-    });
-}
-
-async function showMyTasks(chatId) {
-    const user = getUserData(chatId);
-
-    const response = await safeClickUpCall(chatId, () =>
-        getMyTasksWithStatuses(
-            user.apiToken,
-            user.lastListId,
-            user.clickupUserId,
-            user.selectedStatuses || []
-        )
-    );
-
-    const tasks = response.tasks || [];
-
-    if (!tasks.length) {
-        await bot.sendMessage(chatId, 'No tasks for selected statuses.');
-        return;
+        const lists = await getLists(user.apiToken, folderId);
+        sendItemsInGrid(chatId, lists.lists, 'list');
     }
 
-    const buttons = tasks.map(t => [{
-        text: `${t.name} (${t.status.status})`,
-        callback_data: `task_${t.id}`
-    }]);
+    // LIST → SELECT
+    else if (data.startsWith('list_')) {
+        const listId = data.split('_')[1];
 
-    await bot.sendMessage(chatId, 'Your tasks:', {
-        reply_markup: { inline_keyboard: buttons }
-    });
-}
-async function showStatusFilter(chatId) {
-    const user = getUserData(chatId);
+        if (!user.lists || user.lists.length === 0) {
+            bot.sendMessage(chatId, 'Error: No lists available. Please fetch lists again using /menu.');
+            return;
+        }
 
-    const listData = await safeClickUpCall(chatId, () =>
-        fetchClickUp(`list/${user.lastListId}`, user.apiToken)
-    );
+        const selectedList = user.lists.find(list => list.id === listId);
 
-    const statuses = listData.statuses;
+        if (!selectedList) {
+            bot.sendMessage(chatId, 'Error: Could not find the selected list.');
+            return;
+        }
 
-    if (!statuses?.length) {
-        await bot.sendMessage(chatId, 'No statuses found.');
-        return;
+        updateUser(chatId, { lastListId: listId, lastListName: selectedList.name });
+
+        bot.sendMessage(
+            chatId,
+            `List selected: *${selectedList.name}*. You can now create tasks in this list.`,
+            { parse_mode: 'Markdown' }
+        );
     }
-
-    const selected = user.tempStatusSelection || [];
-
-    updateUser(chatId, {
-        availableStatuses: statuses
-    });
-
-    const buttons = statuses.map(s => [{
-        text: selected.includes(s.status)
-            ? `✅ ${s.status}`
-            : `⬜ ${s.status}`,
-        callback_data: `toggle_status_${s.status}`
-    }]);
-
-    buttons.push([
-        { text: '💾 Apply', callback_data: 'apply_status_filter' }
-    ]);
-
-    await bot.sendMessage(chatId, 'Select statuses:', {
-        reply_markup: { inline_keyboard: buttons }
-    });
 }
 
-async function showStatusChanger(chatId) {
-    const user = getUserData(chatId);
-
-    if (!user.selectedTaskId) {
-        await bot.sendMessage(chatId, 'Select a task first.');
-        return;
-    }
-
-    const statuses = await safeClickUpCall(chatId, () =>
-        getListStatuses(user.apiToken, user.lastListId)
-    );
-
-    const buttons = statuses.map(s => [{
-        text: s.status,
-        callback_data: `set_status_${s.status}`
-    }]);
-
-    await bot.sendMessage(chatId, 'Change status:', {
-        reply_markup: { inline_keyboard: buttons }
-    });
-}
