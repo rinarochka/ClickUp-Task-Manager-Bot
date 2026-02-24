@@ -9,11 +9,16 @@ export async function getListsInSpace(token, spaceId) {
     return await fetchClickUp(`space/${spaceId}/list`, token);
 }
 export async function fetchClickUp(endpoint, apiToken, method = 'GET', body = null) {
+
     const url = `https://api.clickup.com/api/v2/${endpoint}`;
-   const headers = {
-    'Authorization': `Bearer ${apiToken}`,
-    'Content-Type': 'application/json',
+
+    const headers = {
+        'Authorization': apiToken.startsWith('pk_')
+            ? apiToken              // Personal token
+            : `Bearer ${apiToken}`, // OAuth token
+        'Content-Type': 'application/json',
     };
+
     const options = { method, headers };
     if (body) options.body = JSON.stringify(body);
 
@@ -22,13 +27,13 @@ export async function fetchClickUp(endpoint, apiToken, method = 'GET', body = nu
         const data = await response.json();
 
         if (!response.ok) {
-            console.error(`Error fetching from ClickUp: ${JSON.stringify(data)}`);
-            throw new Error(data.err || `HTTP ${response.status}: ${response.statusText}`);
+            console.error("ClickUp error:", data);
+            throw new Error(data.err || `HTTP ${response.status}`);
         }
 
         return data;
     } catch (error) {
-        console.error(`Error fetching from ClickUp: ${error.message}`);
+        console.error("Fetch error:", error.message);
         throw error;
     }
 }
