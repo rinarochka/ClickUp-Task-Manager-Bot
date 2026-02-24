@@ -2,12 +2,19 @@ import dotenv from 'dotenv';
 dotenv.config();
 import TelegramBot from 'node-telegram-bot-api';
 import { loadUserData, saveUserData, getUserData, updateUser, clearUserData } from './userData.js';
-import { fetchClickUp, getTeams, getSpaces, getFolders, getLists } from './clickupApi.js';
 import { parseTaskInput } from './taskParser.js';
 import { getHelpMessage } from './helpContent.js';
-
+import { 
+    fetchClickUp, 
+    getTeams, 
+    getSpaces, 
+    getFolders, 
+    getLists,
+    getTasks,
+    getListStatuses
+} from './clickupApi.js';
 // Load Telegram Token from environment or constants
-const TelegramToken = process.env.TELEGRAM_TOKEN || 'your-telegram-bot-token';
+const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
 const bot = new TelegramBot(TelegramToken, { polling: true });
 
 (async function initializeBot() {
@@ -36,6 +43,9 @@ function handleMenu(msg) {
                     { text: 'Current List 📄', callback_data: 'current_list' },
                 ],
                 [
+                    { text: 'Show Tasks 📋', callback_data: 'show_tasks' }
+                ],
+                [
                     { text: 'Clear Data 🗑️', callback_data: 'clear_data' },
                     { text: 'Help ❓', callback_data: 'help' },
                 ],
@@ -56,10 +66,59 @@ async function handleCallbackQuery(query) {
     const data = query.data;
 
     try {
+
+        // ===== SELECT TASK =====
+        if (data.startsWith('task_')) {
+
+            const taskId = data.replace('task_', '');
+            updateUser(chatId, { selectedTaskId: taskId });
+
+            await bot.sendMessage(chatId, 'Task options:', {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: 'Change Status 🔄', callback_data: 'change_status' }
+                        ]
+                    ]
+                }
+            });
+
+            await bot.answerCallbackQuery(query.id);
+            return;
+        }
+
+
+        // ===== SET STATUS =====
+        if (data.startsWith('set_status_')) {
+
+            if (!user.selectedTaskId) {
+                await bot.sendMessage(chatId, 'Please select a task first.');
+                await bot.answerCallbackQuery(query.id);
+                return;
+            }
+
+            const newStatus = data.replace('set_status_', '');
+
+            await fetchClickUp(
+                `task/${user.selectedTaskId}`,
+                user.apiToken,
+                'PUT',
+                { status: newStatus }
+            );
+
+            await bot.sendMessage(chatId, `✅ Status updated to: ${newStatus}`);
+
+            await bot.answerCallbackQuery(query.id);
+            return;
+        }
+
+
+        // ===== STATIC CALLBACKS =====
         switch (data) {
+
             case 'set_api_token':
                 updateUser(chatId, { state: 'awaiting_api_token' });
-                bot.sendMessage(chatId, 'Please enter your ClickUp API token:');
+                await bot.sendMessage(chatId, 'Please enter your ClickUp API token:');
                 break;
 
             case 'fetch_teams':
@@ -79,26 +138,78 @@ async function handleCallbackQuery(query) {
                 break;
 
             case 'help':
-                bot.sendMessage(chatId, getHelpMessage(), { parse_mode: 'Markdown' });
+                await bot.sendMessage(chatId, getHelpMessage(), { parse_mode: 'Markdown' });
                 break;
 
             case 'confirm_clear_data':
                 clearUserData(chatId);
-                bot.sendMessage(chatId, 'All your data has been cleared. Use /menu to start fresh.');
+                await bot.sendMessage(chatId, 'All your data has been cleared. Use /menu to start fresh.');
                 break;
 
             case 'cancel_clear_data':
-                bot.sendMessage(chatId, 'Your data was not cleared. Use /menu to continue.');
+                await bot.sendMessage(chatId, 'Your data was not cleared. Use /menu to continue.');
+                break;
+
+            case 'show_tasks':
+
+                if (!user.apiToken || !user.lastListId) {
+                    await bot.sendMessage(chatId, 'Please set API token and select a list first.');
+                    break;
+                }
+
+                const response = await getTasks(user.apiToken, user.lastListId);
+                const tasks = response.tasks;
+
+                if (!tasks || !tasks.length) {
+                    await bot.sendMessage(chatId, 'No tasks in this list.');
+                    break;
+                }
+
+                updateUser(chatId, { tasks });
+
+                const taskButtons = tasks.map(t => [{
+                    text: `${t.name} (${t.status.status})`,
+                    callback_data: `task_${t.id}`
+                }]);
+
+                await bot.sendMessage(chatId, 'Select a task:', {
+                    reply_markup: { inline_keyboard: taskButtons }
+                });
+
+                break;
+
+            case 'change_status':
+
+                if (!user.selectedTaskId) {
+                    await bot.sendMessage(chatId, 'Please select a task first.');
+                    break;
+                }
+
+                const statuses = await getListStatuses(user.apiToken, user.lastListId);
+
+                statuses.sort((a, b) => a.orderindex - b.orderindex);
+
+                const statusButtons = statuses.map(s => [{
+                    text: s.status,
+                    callback_data: `set_status_${s.status}`
+                }]);
+
+                await bot.sendMessage(chatId, 'Select new status:', {
+                    reply_markup: { inline_keyboard: statusButtons }
+                });
+
                 break;
 
             default:
-                handleHierarchyNavigation(chatId, user, data);
+                await handleHierarchyNavigation(chatId, user, data);
         }
+
     } catch (error) {
         console.error(`Error handling callback: ${error.message}`);
-        bot.sendMessage(chatId, `An error occurred: ${error.message}`);
+        await bot.sendMessage(chatId, `An error occurred: ${error.message}`);
     }
-    bot.answerCallbackQuery(query.id);
+
+    await bot.answerCallbackQuery(query.id);
 }
 
 async function handleUserMessage(msg) {
@@ -273,4 +384,8 @@ async function handleHierarchyNavigation(chatId, user, data) {
             parse_mode: 'Markdown',
         });;
     }
+}
+async function getListStatuses(apiToken, listId) {
+    const response = await fetchClickUp(`list/${listId}`, apiToken);
+    return response.statuses;
 }

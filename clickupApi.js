@@ -50,3 +50,12 @@ export async function getFolders(apiToken, spaceId) {
 export async function getLists(apiToken, folderId) {
     return await fetchClickUp(`folder/${folderId}/list`, apiToken);
 }
+//status
+export async function getTasks(apiToken, listId) {
+    return fetchClickUp(`list/${listId}/task`, apiToken);
+}
+
+export async function getListStatuses(apiToken, listId) {
+    const response = await fetchClickUp(`list/${listId}`, apiToken);
+    return response.statuses;
+}
