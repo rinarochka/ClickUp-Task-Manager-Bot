@@ -71,3 +71,31 @@ export async function getMyTasks(apiToken, listId, userId) {
         apiToken
     );
 }
+export async function getTasksWithStatuses(apiToken, listId, statuses = []) {
+
+    let endpoint = `list/${listId}/task`;
+
+    if (statuses.length) {
+        const query = statuses
+            .map(s => `statuses[]=${encodeURIComponent(s)}`)
+            .join('&');
+
+        endpoint += `?${query}`;
+    }
+
+    return fetchClickUp(endpoint, apiToken);
+}
+export async function getMyTasksWithStatuses(apiToken, listId, userId, statuses = []) {
+
+    let endpoint = `list/${listId}/task?assignees[]=${userId}`;
+
+    if (statuses.length) {
+        const query = statuses
+            .map(s => `statuses[]=${encodeURIComponent(s)}`)
+            .join('&');
+
+        endpoint += `&${query}`;
+    }
+
+    return fetchClickUp(endpoint, apiToken);
+}
