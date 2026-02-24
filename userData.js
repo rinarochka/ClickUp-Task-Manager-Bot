@@ -1,49 +1,65 @@
-import fs from 'fs/promises';
-const DATA_FILE = './userData.json';
-let userData = {};
+import fs from 'fs'
 
-export async function loadUserData() {
-    try {
-        const data = await fs.readFile(DATA_FILE, 'utf8');
-        userData = JSON.parse(data);
-    } catch (error) {
-        console.error('Could not load user data. Initializing with empty data.');
-        userData = {};
-        await saveUserData(); // Ensure the file is created
+const DB_FILE = './users.json'
+
+let db = { users: {} }
+
+if (fs.existsSync(DB_FILE)) {
+  db = JSON.parse(fs.readFileSync(DB_FILE))
+}
+
+function save() {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2))
+}
+
+function ensureUser(id) {
+  if (!db.users[id]) {
+    db.users[id] = {
+      token: null,
+      clickupUserId: null,
+      teamId: null,
+      spaceId: null,
+      folderId: null,
+      listId: null,
+      trackedStatuses: [],
+      reminders: {
+        daily: true,
+        hourly: false
+      },
+      state: { step: 'idle' }
     }
+    save()
+  }
+  return db.users[id]
 }
 
-export async function saveUserData() {
-    try {
-        await fs.writeFile(DATA_FILE, JSON.stringify(userData, null, 2));
-    } catch (error) {
-        console.error('Could not save user data:', error.message);
-    }
+export function getUserData(id) {
+  return ensureUser(id)
 }
 
-export function getUserData(chatId) {
-    if (!userData[chatId]) {
-        userData[chatId] = {
-            apiToken: null,
-            lastTeamId: null,
-            lastSpaceId: null,
-            lastFolderId: null,
-            lastListId: null,
-            lastListName: null,
-            state: null,
-            lists: [],
-        };
-    }
-    return userData[chatId];
+export function updateUser(id, patch) {
+  const user = ensureUser(id)
+  Object.assign(user, patch)
+  save()
+  return user
 }
 
-export function updateUser(chatId, updates) {
-    if (!userData[chatId]) getUserData(chatId); // Initialize user data if not present
-    userData[chatId] = { ...userData[chatId], ...updates };
-    saveUserData(); // Persist changes
+export function resetUserToken(id) {
+  return updateUser(id, {
+    token: null,
+    clickupUserId: null,
+    teamId: null,
+    spaceId: null,
+    folderId: null,
+    listId: null,
+    trackedStatuses: [],
+    state: { step: 'idle' }
+  })
 }
 
-export function clearUserData(chatId) {
-    delete userData[chatId];
-    saveUserData();
+export function getAllUsers() {
+  return Object.entries(db.users).map(([id, user]) => ({
+    telegramId: id,
+    ...user
+  }))
 }

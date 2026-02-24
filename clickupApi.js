@@ -71,3 +71,31 @@ export async function getMyTasks(apiToken, listId, userId) {
         apiToken
     );
 }
+const BASE = 'https://api.clickup.com/api/v2'
+
+async function request(token, method, path, body) {
+
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: token,
+      'Content-Type': 'application/json'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  })
+
+  const text = await res.text()
+  const data = text ? JSON.parse(text) : {}
+
+  if (!res.ok) {
+    const error = new Error(data?.err || 'ClickUp API error')
+    error.status = res.status
+    throw error
+  }
+
+  return data
+}
+export async function getListStatuses(token, listId) {
+  const list = await request(token, 'GET', `/list/${listId}`)
+  return list.statuses || []
+}
