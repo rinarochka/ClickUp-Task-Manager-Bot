@@ -1,4 +1,3 @@
-
 import fetch from 'node-fetch';
 
 // Reusable API agent configuration for IPv4
@@ -61,4 +60,14 @@ export async function getTasks(apiToken, listId) {
 export async function getListStatuses(apiToken, listId) {
     const response = await fetchClickUp(`list/${listId}`, apiToken);
     return response.statuses;
+}
+//TASKS
+export async function getAuthorizedUser(apiToken) {
+    return fetchClickUp('user', apiToken);
+}
+export async function getMyTasks(apiToken, listId, userId) {
+    return fetchClickUp(
+        `list/${listId}/task?assignees[]=${userId}`,
+        apiToken
+    );
 }
