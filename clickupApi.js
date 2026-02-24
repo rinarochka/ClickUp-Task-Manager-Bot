@@ -10,9 +10,9 @@ export async function getListsInSpace(token, spaceId) {
 }
 export async function fetchClickUp(endpoint, apiToken, method = 'GET', body = null) {
     const url = `https://api.clickup.com/api/v2/${endpoint}`;
-    const headers = {
-        'Authorization': apiToken,
-        'Content-Type': 'application/json',
+   const headers = {
+    'Authorization': `Bearer ${apiToken}`,
+    'Content-Type': 'application/json',
     };
     const options = { method, headers };
     if (body) options.body = JSON.stringify(body);
