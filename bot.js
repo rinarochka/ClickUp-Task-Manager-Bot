@@ -12,7 +12,9 @@ import {
     getLists,
     getTasks,
     getListStatuses,
-    getListsInSpace
+    getListsInSpace,
+    getAuthorizedUser,
+    getMyTasks
 } from './clickupApi.js';
 // Load Telegram Token from environment or constants
 const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
@@ -60,6 +62,12 @@ function handleMenu(msg) {
                 ],
                 [
                     { text: 'Show Tasks 📋', callback_data: 'show_tasks' }
+                ],
+                [
+                    { text: 'Sync My ClickUp ID 👤', callback_data: 'get_me' }
+                ],
+                [
+                    { text: 'My Tasks 👤', callback_data: 'my_tasks' }
                 ],
                 [
                     { text: 'Clear Data 🗑️', callback_data: 'clear_data' },
@@ -145,7 +153,41 @@ async function handleCallbackQuery(query) {
                 updateUser(chatId, { state: 'awaiting_api_token' });
                 await bot.sendMessage(chatId, 'Please enter your ClickUp API token:');
                 break;
+            case 'my_tasks':
 
+    if (!user.apiToken || !user.lastListId) {
+        await bot.sendMessage(chatId, 'Please select a list first.');
+        break;
+    }
+
+    if (!user.clickupUserId) {
+        await bot.sendMessage(chatId, 'Please sync your ClickUp ID first.');
+        break;
+    }
+
+    const myTasksResponse = await getMyTasks(
+        user.apiToken,
+        user.lastListId,
+        user.clickupUserId
+    );
+
+    const myTasks = myTasksResponse.tasks;
+
+    if (!myTasks || !myTasks.length) {
+        await bot.sendMessage(chatId, 'You have no assigned tasks in this list.');
+        break;
+    }
+
+    const myTaskButtons = myTasks.map(t => [{
+        text: `${t.name} (${t.status.status})`,
+        callback_data: `task_${t.id}`
+    }]);
+
+    await bot.sendMessage(chatId, 'Your assigned tasks:', {
+        reply_markup: { inline_keyboard: myTaskButtons }
+    });
+
+    break;
             case 'fetch_teams':
                 await fetchAndDisplayTeams(chatId, user.apiToken);
                 break;
@@ -174,7 +216,19 @@ async function handleCallbackQuery(query) {
             case 'cancel_clear_data':
                 await bot.sendMessage(chatId, 'Your data was not cleared. Use /menu to continue.');
                 break;
+            case 'get_me':
 
+    if (!user.apiToken) {
+        await bot.sendMessage(chatId, 'Please set API token first.');
+        break;
+    }
+
+    const me = await getAuthorizedUser(user.apiToken);
+
+    updateUser(chatId, { clickupUserId: me.user.id });
+
+    await bot.sendMessage(chatId, `✅ Your ClickUp ID synced.`);
+    break;
             case 'show_tasks':
 
                 if (!user.apiToken || !user.lastListId) {

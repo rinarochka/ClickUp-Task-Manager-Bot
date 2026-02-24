@@ -61,3 +61,13 @@ export async function getListStatuses(apiToken, listId) {
     const response = await fetchClickUp(`list/${listId}`, apiToken);
     return response.statuses;
 }
+//TASKS
+export async function getAuthorizedUser(apiToken) {
+    return fetchClickUp('user', apiToken);
+}
+export async function getMyTasks(apiToken, listId, userId) {
+    return fetchClickUp(
+        `list/${listId}/task?assignees[]=${userId}`,
+        apiToken
+    );
+}
