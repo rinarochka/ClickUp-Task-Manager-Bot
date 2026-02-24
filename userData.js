@@ -1,65 +1,104 @@
-import fs from 'fs'
+import fs from 'fs';
 
-const DB_FILE = './users.json'
+const DB_FILE = './users.json';
 
-let db = { users: {} }
+let db = { users: {} };
 
-if (fs.existsSync(DB_FILE)) {
-  db = JSON.parse(fs.readFileSync(DB_FILE))
-}
-
-function save() {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2))
-}
-
-function ensureUser(id) {
-  if (!db.users[id]) {
-    db.users[id] = {
-      token: null,
-      clickupUserId: null,
-      teamId: null,
-      spaceId: null,
-      folderId: null,
-      listId: null,
-      trackedStatuses: [],
-      reminders: {
-        daily: true,
-        hourly: false
-      },
-      state: { step: 'idle' }
+// ====== LOAD / SAVE ======
+export async function loadUserData() {
+  if (fs.existsSync(DB_FILE)) {
+    try {
+      db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')) || { users: {} };
+      if (!db.users) db.users = {};
+    } catch {
+      db = { users: {} };
     }
-    save()
+  } else {
+    db = { users: {} };
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
-  return db.users[id]
 }
 
+export function saveUserData() {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
+
+// ====== INTERNAL ======
+function ensureUser(id) {
+  const uid = String(id);
+
+  if (!db.users[uid]) {
+    db.users[uid] = {
+      apiToken: null,
+      clickupUserId: null,
+
+      lastTeamId: null,
+      lastSpaceId: null,
+      lastFolderId: null,
+      lastListId: null,
+      lastListName: null,
+
+      lists: [],
+      tasks: [],
+      selectedTaskId: null,
+
+      trackedStatuses: [],
+      reminders: { daily: true, hourly: false },
+
+      state: null
+    };
+
+    saveUserData();
+  }
+
+  // миграция на новые поля (если старые юзеры)
+  db.users[uid].reminders ||= { daily: true, hourly: false };
+  db.users[uid].trackedStatuses ||= [];
+  db.users[uid].lists ||= [];
+  db.users[uid].tasks ||= [];
+
+  return db.users[uid];
+}
+
+// ====== PUBLIC API ======
 export function getUserData(id) {
-  return ensureUser(id)
+  return ensureUser(id);
 }
 
 export function updateUser(id, patch) {
-  const user = ensureUser(id)
-  Object.assign(user, patch)
-  save()
-  return user
+  const user = ensureUser(id);
+  Object.assign(user, patch);
+  saveUserData();
+  return user;
+}
+
+export function clearUserData(id) {
+  const uid = String(id);
+  delete db.users[uid];
+  saveUserData();
 }
 
 export function resetUserToken(id) {
   return updateUser(id, {
-    token: null,
+    apiToken: null,
     clickupUserId: null,
-    teamId: null,
-    spaceId: null,
-    folderId: null,
-    listId: null,
+
+    lastTeamId: null,
+    lastSpaceId: null,
+    lastFolderId: null,
+    lastListId: null,
+    lastListName: null,
+
     trackedStatuses: [],
-    state: { step: 'idle' }
-  })
+    selectedTaskId: null,
+    state: null
+  });
 }
 
+// optional (если потом надо scheduler)
 export function getAllUsers() {
-  return Object.entries(db.users).map(([id, user]) => ({
-    telegramId: id,
-    ...user
-  }))
+  return Object.entries(db.users).map(([telegramId, u]) => ({
+    telegramId,
+    ...u
+  }));
 }
