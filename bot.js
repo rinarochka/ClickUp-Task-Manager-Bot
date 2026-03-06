@@ -16,10 +16,11 @@ import {
     getAuthorizedUser,
     getMyTasks
 } from './clickupApi.js';
+import cron from "node-cron";
 // Load Telegram Token from environment or constants
 const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
 const bot = new TelegramBot(TelegramToken, { polling: true });
-const cron = require("node-cron");
+
 (async function initializeBot() {
     await loadUserData();
 
