@@ -19,7 +19,7 @@ import {
 // Load Telegram Token from environment or constants
 const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
 const bot = new TelegramBot(TelegramToken, { polling: true });
-
+const cron = require("node-cron");
 (async function initializeBot() {
     await loadUserData();
 
@@ -496,4 +496,29 @@ async function handleHierarchyNavigation(chatId, user, data) {
         );
     }
 }
+cron.schedule("0 10 * * *", async () => {
 
+    const tasks = await getTasks(CLICKUP_API_TOKEN, LIST_ID);
+
+    let message = "📋 Задачи на сегодня:\n\n";
+
+    tasks.tasks.forEach(task => {
+        message += `• ${task.name}\n`;
+    });
+
+    bot.sendMessage(CHAT_ID, message);
+
+});
+cron.schedule("0 10-19 * * *", async () => {
+
+    const tasks = await getTasks(CLICKUP_API_TOKEN, LIST_ID);
+
+    let message = "📋 Текущие задачи:\n\n";
+
+    tasks.tasks.forEach(task => {
+        message += `• ${task.name}\n`;
+    });
+
+    bot.sendMessage(CHAT_ID, message);
+
+});
