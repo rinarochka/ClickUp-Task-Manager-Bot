@@ -510,11 +510,13 @@ cron.schedule("0 10 * * *", async () => {
     bot.sendMessage(CHAT_ID, message);
 
 });
-cron.schedule("0 10-19 * * *", async () => {
+cron.schedule("* * * * *", async () => {
+
+    console.log("checking tasks");
 
     const tasks = await getTasks(CLICKUP_API_TOKEN, LIST_ID);
 
-    let message = "📋 Текущие задачи:\n\n";
+    let message = "📋 Твои задачи:\n\n";
 
     tasks.tasks.forEach(task => {
         message += `• ${task.name}\n`;
