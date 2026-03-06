@@ -54,9 +54,9 @@ export async function getLists(apiToken, folderId) {
 }
 //status
 export async function getTasks(apiToken, listId) {
-    return fetchClickUp(`list/${listId}/task`, apiToken);
+    const response = await fetchClickUp(`list/${listId}/task`, apiToken);
+    return response.tasks || [];
 }
-
 export async function getListStatuses(apiToken, listId) {
     const response = await fetchClickUp(`list/${listId}`, apiToken);
     return response.statuses;

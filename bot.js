@@ -16,6 +16,7 @@ import {
     getAuthorizedUser,
     getMyTasks
 } from './clickupApi.js';
+import { getAllUsers } from './userData.js';
 import cron from "node-cron";
 // Load Telegram Token from environment or constants
 const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
@@ -497,32 +498,36 @@ async function handleHierarchyNavigation(chatId, user, data) {
         );
     }
 }
-cron.schedule("0 10 * * *", async () => {
 
-    const tasks = await getTasks(CLICKUP_API_TOKEN, LIST_ID);
-
-    let message = "📋 Задачи на сегодня:\n\n";
-
-    tasks.tasks.forEach(task => {
-        message += `• ${task.name}\n`;
-    });
-
-    bot.sendMessage(CHAT_ID, message);
-
-});
 cron.schedule("* * * * *", async () => {
 
-    console.log("checking tasks");
+    console.log("checking tasks for all users");
 
-    const tasks = await getTasks(CLICKUP_API_TOKEN, LIST_ID);
+    const users = getAllUsers();
 
-    let message = "📋 Твои задачи:\n\n";
+    for (const user of users) {
 
-    tasks.tasks.forEach(task => {
-        message += `• ${task.name}\n`;
-    });
+        if (!user.apiToken || !user.lastListId) continue;
 
-    bot.sendMessage(CHAT_ID, message);
+        try {
+
+            const response = await getTasks(user.apiToken, user.lastListId);
+            const tasks = response?.tasks || [];
+
+            if (!tasks.length) continue;
+
+            let message = "📋 Your tasks:\n\n";
+
+            tasks.forEach(task => {
+                message += `• ${task.name} (${task.status.status})\n`;
+            });
+
+            await bot.sendMessage(user.telegramId, message);
+
+        } catch (error) {
+            console.log("Cron error:", error.message);
+        }
+    }
 
 });
 bot.on("message", (msg) => {
