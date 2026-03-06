@@ -523,3 +523,6 @@ cron.schedule("0 10-19 * * *", async () => {
     bot.sendMessage(CHAT_ID, message);
 
 });
+bot.on("message", (msg) => {
+    console.log(msg.chat.id);
+});
