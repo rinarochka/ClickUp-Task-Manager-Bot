@@ -119,7 +119,7 @@ function handleStatus(msg) {
 
 *State*: ${scheduler.isRunning ? '🔴 Running' : '🟢 Idle'}
 *Enabled*: ${process.env.SCHEDULER_ENABLED !== 'false' ? '✅ Yes' : '❌ No'}
-*Schedule*: ${process.env.SCHEDULER_CRON || '5 10-19 * * * (hourly 10-19)'}
+*Schedule*: ${process.env.SCHEDULER_CRON || '* * * * * (hourly 10-19)'}
 
 *Last Run Statistics*:
 • Users Processed: ${stats.usersProcessed || 'N/A'}
