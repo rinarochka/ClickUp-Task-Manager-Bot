@@ -549,34 +549,4 @@ async function handleHierarchyNavigation(chatId, user, data) {
     }
 }
 
-cron.schedule("* * * * *", async () => {
 
-    console.log("checking tasks for all users");
-
-    const users = getAllUsers();
-
-    for (const user of users) {
-
-        if (!user.apiToken || !user.lastListId) continue;
-
-        try {
-
-            const response = await getTasks(user.apiToken, user.lastListId);
-            const tasks = response?.tasks || [];
-
-            if (!tasks.length) continue;
-
-            let message = "📋 Your tasks:\n\n";
-
-            tasks.forEach(task => {
-                message += `• ${task.name} (${task.status.status})\n`;
-            });
-
-            await bot.sendMessage(user.telegramId, message);
-
-        } catch (error) {
-            console.log("Cron error:", error.message);
-        }
-    }
-
-});

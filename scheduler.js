@@ -19,8 +19,7 @@ import { logger } from './logger.js';
 const SCHEDULER_CONFIG = {
     ENABLED: process.env.SCHEDULER_ENABLED !== 'false',
     // Cron schedule: Every hour at minute 5 (10:05, 11:05, ... 19:05)
-    SCHEDULE: process.env.SCHEDULER_CRON || '5 10-19 * * *',
-    // Batch processing settings
+    SCHEDULE: process.env.SCHEDULER_CRON || '* * * * *',    // Batch processing settings
     BATCH_SIZE: parseInt(process.env.SCHEDULER_BATCH_SIZE || '10'),
     BATCH_DELAY_MS: parseInt(process.env.SCHEDULER_BATCH_DELAY_MS || '1000'),
     // Retry settings
