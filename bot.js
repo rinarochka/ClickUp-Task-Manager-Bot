@@ -17,16 +17,28 @@ import {
     getMyTasks
 } from './clickupApi.js';
 import { getAllUsers } from './userData.js';
-import cron from "node-cron";
+import { TaskScheduler } from './scheduler.js';
+import { logger } from './logger.js';
+
 // Load Telegram Token from environment or constants
 const TelegramToken = process.env.TELEGRAM_TOKEN || '8011206836:AAHAMz1YLgBMUQwa42U4i5VZoWK-qR-evzE';
 const bot = new TelegramBot(TelegramToken, { polling: true });
 
+// Initialize scheduler
+const scheduler = new TaskScheduler(bot);
+
 (async function initializeBot() {
     await loadUserData();
 
+    // Start scheduler
+    scheduler.start();
+    logger.info('ClickUp Task Manager Bot initialized', {
+        schedulerEnabled: process.env.SCHEDULER_ENABLED !== 'false',
+    });
+
     bot.onText(/\/menu/, handleMenu);
     bot.onText(/\/help/, handleHelp);
+    bot.onText(/\/status/, handleStatus);
     bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
 
@@ -45,8 +57,21 @@ Use /menu to begin.`);
     bot.on('callback_query', handleCallbackQuery);
     bot.on('message', handleUserMessage);
 
-    console.log('Bot is running...');
+    logger.info('Bot is running with polling...');
 })();
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+    logger.info('Shutting down gracefully...');
+    scheduler.stop();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    logger.info('Shutting down gracefully (SIGTERM)...');
+    scheduler.stop();
+    process.exit(0);
+});
 
 // Handlers
 function handleMenu(msg) {
@@ -84,6 +109,31 @@ function handleMenu(msg) {
 function handleHelp(msg) {
     const chatId = msg.chat.id;
     bot.sendMessage(chatId, getHelpMessage(), { parse_mode: 'Markdown' });
+}
+
+function handleStatus(msg) {
+    const chatId = msg.chat.id;
+    const stats = scheduler.getStats();
+    
+    const statusMessage = `📊 *Scheduler Status*
+
+*State*: ${scheduler.isRunning ? '🔴 Running' : '🟢 Idle'}
+*Enabled*: ${process.env.SCHEDULER_ENABLED !== 'false' ? '✅ Yes' : '❌ No'}
+*Schedule*: ${process.env.SCHEDULER_CRON || '5 10-19 * * * (hourly 10-19)'}
+
+*Last Run Statistics*:
+• Users Processed: ${stats.usersProcessed || 'N/A'}
+• Tasks Notified: ${stats.tasksNotified || 'N/A'}
+• Last Run: ${stats.lastRun ? stats.lastRun.toLocaleString() : 'Never'}
+• Recent Errors: ${stats.errors.length}
+
+*Configuration*:
+• Batch Size: ${process.env.SCHEDULER_BATCH_SIZE || 10}
+• Batch Delay: ${process.env.SCHEDULER_BATCH_DELAY_MS || 1000}ms
+• Log Level: ${process.env.LOG_LEVEL || 'info'}
+`;
+    
+    bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
 }
 
 async function handleCallbackQuery(query) {
@@ -529,7 +579,4 @@ cron.schedule("* * * * *", async () => {
         }
     }
 
-});
-bot.on("message", (msg) => {
-    console.log(msg.chat.id);
 });

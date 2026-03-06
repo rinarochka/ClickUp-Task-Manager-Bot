@@ -45,6 +45,9 @@ function ensureUser(id) {
       trackedStatuses: [],
       reminders: { daily: true, hourly: false },
 
+      // Scheduler fields
+      lastTasksHash: null,
+
       state: null
     };
 
@@ -56,6 +59,7 @@ function ensureUser(id) {
   db.users[uid].trackedStatuses ||= [];
   db.users[uid].lists ||= [];
   db.users[uid].tasks ||= [];
+  db.users[uid].lastTasksHash ||= null;
 
   return db.users[uid];
 }
